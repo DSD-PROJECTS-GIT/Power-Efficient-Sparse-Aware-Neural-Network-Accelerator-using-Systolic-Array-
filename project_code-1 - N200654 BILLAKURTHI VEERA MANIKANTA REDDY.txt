@@ -1,0 +1,263 @@
+module top(
+  input clk,rst,start,
+  input  [3:0] sel,           
+  output [63:0] out,       
+  output done
+    );
+wire [3:0] counter_addr;
+mod10_counter m(clk,rst,start,counter_addr,done);
+
+wire [31:0] a1,a2,a3,a4,b1,b2,b3,b4;
+input_bram b(counter_addr,a1,a2,a3,a4,b1,b2,b3,b4);
+
+wire [63:0] c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16;
+systolic_array s(clk,rst,a1,a2,a3,a4,b1,b2,b3,b4,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16);
+
+output_mux mux_inst(sel,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16,out);
+endmodule
+
+
+
+module pe(
+input clk,rst,
+input [31:0]a,b,
+output reg [63:0] out,
+output reg [31:0] shift_right,shift_bottom
+    );
+    wire is_sparse;
+    assign is_sparse = ((a || b)==0);
+    always @(posedge clk) begin
+        if (rst)
+        begin
+            shift_right  <= 0;
+            shift_bottom <= 0;
+        end 
+        else 
+        begin
+            shift_right  <= a;
+            shift_bottom <= b;
+        end
+    end
+    
+    always @(posedge clk)
+    begin
+        if (rst)
+        begin
+            out <= 64'd0;
+        end
+        else if (!is_sparse)
+        begin 
+            out <= out + (a * b);
+        end
+    end
+endmodule
+
+
+
+module systolic_array (
+  input clk,rst,
+  input [31:0] a1,a2,a3,a4,
+  input [31:0] b1,b2,b3,b4,
+  output [63:0] c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16
+);
+wire [31:0] pe1_right_pe2,pe2_right_pe3,pe3_right_pe4;           //Horizontal Connections
+wire [31:0] pe5_right_pe6,pe6_right_pe7,pe7_right_pe8;          //left to right
+wire [31:0] pe9_right_pe10,pe10_right_pe11,pe11_right_pe12;
+wire [31:0] pe13_right_pe14,pe14_right_pe15,pe15_right_pe16;
+
+wire [31:0] pe1_botttom_pe5,pe5_bottom_pe9,pe9_bottom_pe13;     //Vertical Rows
+wire [31:0] pe2_botttom_pe6,pe6_bottom_pe10,pe10_bottom_pe14;   //top to bottom
+wire [31:0] pe3_botttom_pe7,pe7_bottom_pe11,pe11_bottom_pe15;
+wire [31:0] pe4_botttom_pe8,pe8_bottom_pe12,pe12_bottom_pe16;
+
+wire [31:0] pe4_right,pe8_right,pe12_right,pe16_right;
+wire [31:0] pe13_bottom,pe14_bottom,pe15_bottom,pe16_bottom;
+
+pe p1(clk,rst,a1,b1,c1,pe1_right_pe2,pe1_botttom_pe5);
+pe p2(clk,rst,pe1_right_pe2,b2,c2,pe2_right_pe3,pe2_botttom_pe6);
+pe p3(clk,rst,pe2_right_pe3,b3,c3,pe3_right_pe4,pe3_botttom_pe7);
+pe p4(clk,rst,pe3_right_pe4,b4,c4,pe4_right,pe4_botttom_pe8);
+
+pe p5(clk,rst,a2,pe1_botttom_pe5,c5,pe5_right_pe6,pe5_bottom_pe9);
+pe p6(clk,rst,pe5_right_pe6,pe2_botttom_pe6,c6,pe6_right_pe7,pe6_bottom_pe10);
+pe p7(clk,rst,pe6_right_pe7,pe3_botttom_pe7,c7,pe7_right_pe8,pe7_bottom_pe11);
+pe p8(clk,rst,pe7_right_pe8,pe4_botttom_pe8,c8,pe8_right,pe8_bottom_pe12);
+
+pe p9(clk,rst,a3,pe5_bottom_pe9,c9,pe9_right_pe10,pe9_bottom_pe13);
+pe p10(clk,rst,pe9_right_pe10,pe6_bottom_pe10,c10,pe10_right_pe11,pe10_bottom_pe14);
+pe p11(clk,rst,pe10_right_pe11,pe7_bottom_pe11,c11,pe11_right_pe12,pe11_bottom_pe15);
+pe p12(clk,rst,pe11_right_pe12,pe8_bottom_pe12,c12,pe12_right,pe12_bottom_pe16);
+
+
+pe p13(clk,rst,a4,pe9_bottom_pe13,c13,pe13_right_pe14,pe13_bottom);
+pe p14(clk,rst,pe13_right_pe14,pe10_bottom_pe14,c14,pe14_right_pe15,pe14_bottom);
+pe p15(clk,rst,pe14_right_pe15,pe11_bottom_pe15,c15,pe15_right_pe16,pe15_bottom);
+pe p16(clk,rst,pe15_right_pe16,pe12_bottom_pe16,c16,pe16_right,pe16_bottom);
+
+endmodule
+
+
+
+
+module input_bram(
+  //input clk,
+  input [3:0] addr,
+  output [31:0] a1,a2,a3,a4,b1,b2,b3,b4
+    );
+reg [31:0] a1_mem [0:9];
+reg [31:0] a2_mem [0:9];
+reg [31:0] a3_mem [0:9];
+reg [31:0] a4_mem [0:9];
+
+reg [31:0] b1_mem [0:9];
+reg [31:0] b2_mem [0:9];
+reg [31:0] b3_mem [0:9];
+reg [31:0] b4_mem [0:9];
+
+initial
+begin
+  $readmemh("a_row_one.mem",a1_mem);
+  $readmemh("a_row_two.mem",a2_mem);
+  $readmemh("a_row_three.mem",a3_mem);
+  $readmemh("a_row_four.mem",a4_mem);
+  $readmemh("b_col_one.mem",b1_mem);
+  $readmemh("b_col_two.mem",b2_mem);
+  $readmemh("b_col_three.mem",b3_mem);
+  $readmemh("b_col_four.mem",b4_mem);
+end
+
+assign a1 = a1_mem[addr];
+assign a2 = a2_mem[addr];
+assign a3 = a3_mem[addr];
+assign a4 = a4_mem[addr];
+assign b1 = b1_mem[addr];
+assign b2 = b2_mem[addr];
+assign b3 = b3_mem[addr];
+assign b4 = b4_mem[addr];
+
+endmodule
+
+module mod10_counter (
+    input  wire       clk,
+    input  wire       reset,   
+    input  wire       start,   
+    output reg [3:0]  count,
+    output reg        done
+);
+ 
+    reg running;   
+ 
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            count   <= 4'd0;
+            done    <= 1'b0;
+            running <= 1'b0;
+        end
+        else begin
+            
+            if (start)
+                running <= 1'b1;
+ 
+            if (running) begin
+                if (count == 4'd9) begin
+                    done    <= 1'b1;
+                    running <= 1'b0;  
+                    count   <= count;  
+                end
+                else begin
+                    count <= count + 1;
+                    done  <= 1'b0;
+                end
+            end
+            else begin
+                done <= 1'b0;
+            end
+        end
+    end
+ 
+endmodule
+
+
+
+
+
+module output_mux(
+    input  [3:0]  sel,        
+    input  [63:0]  c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16,  
+    output reg [63:0] mux_out 
+);
+
+always @(*) begin
+    case(sel)
+        4'd0:  mux_out = c1;
+        4'd1:  mux_out = c2;
+        4'd2:  mux_out = c3;
+        4'd3:  mux_out = c4;
+        4'd4:  mux_out = c5;
+        4'd5:  mux_out = c6;
+        4'd6:  mux_out = c7;
+        4'd7:  mux_out = c8;
+        4'd8:  mux_out = c9;
+        4'd9:  mux_out = c10;
+        4'd10: mux_out = c11;
+        4'd11: mux_out = c12;
+        4'd12: mux_out = c13;
+        4'd13: mux_out = c14;
+        4'd14: mux_out = c15;
+        4'd15: mux_out = c16;
+        default: mux_out = 64'd0;
+    endcase
+end
+
+endmodule
+
+
+
+module tb_top;
+reg clk,rst,start;
+reg [3:0] sel;
+
+wire [63:0] out;
+wire done;
+
+top t1(clk,rst,start,sel,out,done);
+
+initial
+begin
+    clk = 0;
+    forever #5 clk = ~clk; // 10ns period, same as your 2x2 tb
+end
+
+initial
+begin
+$monitor("Time=%0t | start=%b out=%d done=%b",$time,start,out,done);
+    rst=1'b1;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b1;sel=4'd0;
+#10 rst=1'b0;start=1'b1;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd0;
+#10 rst=1'b0;start=1'b0;sel=4'd1;
+#10 rst=1'b0;start=1'b0;sel=4'd2;
+#10 rst=1'b0;start=1'b0;sel=4'd3;
+#10 rst=1'b0;start=1'b0;sel=4'd4;
+#10 rst=1'b0;start=1'b0;sel=4'd5;
+#10 rst=1'b0;start=1'b0;sel=4'd6;
+#10 rst=1'b0;start=1'b0;sel=4'd7;
+#10 rst=1'b0;start=1'b0;sel=4'd8;
+#10 rst=1'b0;start=1'b0;sel=4'd9;
+#10 rst=1'b0;start=1'b0;sel=4'd10;
+#10 rst=1'b0;start=1'b0;sel=4'd11;
+#10 rst=1'b0;start=1'b0;sel=4'd12;
+#10 rst=1'b0;start=1'b0;sel=4'd13;
+#10 rst=1'b0;start=1'b0;sel=4'd14;
+#10 rst=1'b0;start=1'b0;sel=4'd15;
+#10 $finish;
+end
